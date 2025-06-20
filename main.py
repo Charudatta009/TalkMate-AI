@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
+@app.get("/")
+def home():
+    return {"status": "OK"}
 
 
 app.add_middleware(
