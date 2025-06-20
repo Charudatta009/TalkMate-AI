@@ -1,6 +1,6 @@
 import os
 import openai
-from elevenlabs import generate, set_api_key
+from elevenlabs.client import ElevenLabs  # Updated import
 from dotenv import load_dotenv
 import tempfile
 
@@ -8,7 +8,7 @@ load_dotenv()
 
 # Configure APIs
 openai.api_key = os.getenv("OPENAI_API_KEY")
-set_api_key(os.getenv("ELEVENLABS_API_KEY"))
+elevenlabs_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))  # New client initialization
 
 def process_audio(audio_bytes):
     """Convert speech to text using Whisper"""
@@ -57,11 +57,13 @@ def generate_ai_response(user_input):
 def generate_audio(text):
     """Convert text to speech using ElevenLabs"""
     try:
-        return generate(
+        # Updated ElevenLabs v1.x API call
+        audio = elevenlabs_client.generate(
             text=text,
             voice="Rachel",
             model="eleven_monolingual_v2"
         )
+        return audio  # Returns bytes directly
     except Exception as e:
         print(f"Audio generation error: {e}")
         return b""
