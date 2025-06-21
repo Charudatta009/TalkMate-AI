@@ -3,15 +3,14 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from ai_services import process_audio, generate_ai_response
 from dotenv import load_dotenv
+import uvicorn
+import json
 
 load_dotenv()
 
 app = FastAPI()
-@app.get("/")
-def home():
-    return {"status": "OK"}
 
-
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,29 +23,28 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-           
-            audio_data = await websocket.receive_bytes()
+            # Receive data from client
+            data = await websocket.receive()
             
-            # Process audio → text
-            user_text = process_audio(audio_data)
+            if 'text' in data:
+                # Handle text messages (like conversation start)
+                message = json.loads(data['text'])
+                if message.get('action') == 'start_conversation':
+                    response = generate_ai_response("", message.get('mode', 'casual'))
+                    await websocket.send_text(json.dumps(response))
             
-            # Get AI response
-            ai_response = generate_ai_response(user_text)
-            
-            # Send back response
-            await websocket.send_json({
-                "text": ai_response["text"],
-                "audio": ai_response["audio"],
-                "corrections": ai_response["corrections"]
-            })
-            
+            elif 'bytes' in data:
+                # Handle audio data
+                audio_bytes = data['bytes']
+                user_text = process_audio(audio_bytes)
+                ai_response = generate_ai_response(user_text)
+                await websocket.send_text(json.dumps(ai_response))
+                
     except WebSocketDisconnect:
         print("Client disconnected")
-
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
+    except Exception as e:
+        print(f"Error: {e}")
+        await websocket.close(code=1011)
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
