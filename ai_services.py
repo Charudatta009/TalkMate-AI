@@ -1,6 +1,6 @@
 import os
 import openai
-from elevenlabs.client import ElevenLabs  # Updated import
+from elevenlabs import generate as elevenlabs_generate
 from dotenv import load_dotenv
 import tempfile
 
@@ -8,12 +8,12 @@ load_dotenv()
 
 # Configure APIs
 openai.api_key = os.getenv("OPENAI_API_KEY")
-elevenlabs_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))  # New client initialization
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 def process_audio(audio_bytes):
     """Convert speech to text using Whisper"""
     try:
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=True) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
             tmp.write(audio_bytes)
             tmp.seek(0)
             transcript = openai.Audio.transcribe("whisper-1", tmp)
@@ -22,68 +22,54 @@ def process_audio(audio_bytes):
         print(f"Audio processing error: {e}")
         return ""
 
-def generate_ai_response(user_input):
-    """Generate text response and corrections"""
+def generate_ai_response(user_input, mode="casual"):
+    """Generate text and audio response"""
     try:
+        # Generate text with GPT
+        prompt = {
+            "casual": "You're an English tutor. Have a friendly conversation",
+            "job_interview": "You're a job interviewer. Ask relevant questions",
+            "travel": "You're a travel assistant. Help with English for travel"
+        }.get(mode, "Have a conversation in English")
+        
         response = openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",
             messages=[
-                {
-                    "role": "system", 
-                    "content": "You're an English tutor. Correct grammar naturally and keep responses concise."
-                },
+                {"role": "system", "content": prompt},
                 {"role": "user", "content": user_input}
             ],
             temperature=0.7
         )
         
         ai_text = response.choices[0].message["content"]
-        audio = generate_audio(ai_text)
-        corrections = analyze_grammar(user_input)
+        
+        # Generate speech with ElevenLabs
+        audio = elevenlabs_generate(
+            text=ai_text,
+            voice="Rachel",
+            model="eleven_monolingual_v2",
+            api_key=ELEVENLABS_API_KEY
+        )
+        
+        # Simple grammar check (replace with proper NLP in production)
+        corrections = []
+        if "you was" in user_input.lower():
+            corrections.append({
+                "original": "you was",
+                "corrected": "you were",
+                "explanation": "Use 'were' with 'you' in past tense"
+            })
         
         return {
             "text": ai_text,
-            "audio": audio,
+            "audio": audio,  # This will be base64 encoded audio
             "corrections": corrections
         }
+        
     except Exception as e:
-        print(f"AI response error: {e}")
+        print(f"AI generation error: {e}")
         return {
             "text": "Sorry, I encountered an error. Please try again.",
-            "audio": b"",
+            "audio": None,
             "corrections": []
         }
-
-def generate_audio(text):
-    """Convert text to speech using ElevenLabs"""
-    try:
-        # Updated ElevenLabs v1.x API call
-        audio = elevenlabs_client.generate(
-            text=text,
-            voice="Rachel",
-            model="eleven_monolingual_v2"
-        )
-        return audio  # Returns bytes directly
-    except Exception as e:
-        print(f"Audio generation error: {e}")
-        return b""
-
-def analyze_grammar(text):
-    """Identify grammar mistakes (simplified)"""
-    common_mistakes = {
-        "goed": ("went", "Incorrect past tense of 'go'"),
-        "writed": ("wrote", "Incorrect past tense of 'write'"),
-        "eated": ("ate", "Incorrect past tense of 'eat'"),
-        "doesn't has": ("doesn't have", "Use 'have' with 'doesn't'")
-    }
-    
-    corrections = []
-    for wrong, (correct, explanation) in common_mistakes.items():
-        if wrong in text.lower():
-            corrections.append({
-                "original": wrong,
-                "corrected": correct,
-                "explanation": explanation
-            })
-    
-    return corrections
